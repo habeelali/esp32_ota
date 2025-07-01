@@ -1,0 +1,35 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. Install ESP-IDF
+      - name: Setup ESP-IDF
+        uses: espressif/install-esp-idf-action@v1
+        with:
+          version: 'v5.4.1'  # Use your IDF version
+
+      # 3. Build firmware
+      - name: Build project
+        run: |
+          source $IDF_PATH/export.sh
+          idf.py build
+
+      # 4. Upload firmware artifact
+      - name: Upload firmware
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware
+          path: build/*.bin
