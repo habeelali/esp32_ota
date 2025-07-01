@@ -12,63 +12,62 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define WIFI_SSID   "155"
-#define WIFI_PASS   "359F0E78"
+#define WIFI_SSID "155"
+#define WIFI_PASS "359F0E78"
 
 #define VERSION_URL "https://github.com/habeelali/esp32_ota/releases/latest/download/version.txt"
-#define OTA_URL     "https://github.com/habeelali/esp32_ota/releases/latest/download/project-name.bin"
-#define CURRENT_VERSION "v2.2.2"
-#define POLL_INTERVAL_MS (24 * 60 * 60 * 1000)   /* 24 h */
+#define OTA_URL "https://github.com/habeelali/esp32_ota/releases/latest/download/project-name.bin"
+#define CURRENT_VERSION "v3.0.0"
+#define POLL_INTERVAL_MS (24 * 60 * 60 * 1000)
 
 static const char *TAG = "ESP32_OTA";
 
-/* Structure to hold HTTP response data */
-typedef struct {
+typedef struct
+{
     char *data;
     size_t len;
     size_t capacity;
 } http_response_t;
 
-/* =================================================================== */
-/*  HTTP Event Handler (captures response body)                        */
-/* =================================================================== */
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
     http_response_t *response = (http_response_t *)evt->user_data;
-    
-    switch (evt->event_id) {
-        case HTTP_EVENT_ON_DATA:
-            // Allocate or expand buffer as needed
-            if (!response->data) {
-                response->capacity = evt->data_len + 1;
-                response->data = malloc(response->capacity);
-                if (!response->data) return ESP_FAIL;
-                response->len = 0;
-            } else if (response->len + evt->data_len >= response->capacity) {
-                response->capacity = response->len + evt->data_len + 1;
-                char *new_data = realloc(response->data, response->capacity);
-                if (!new_data) {
-                    free(response->data);
-                    return ESP_FAIL;
-                }
-                response->data = new_data;
+
+    switch (evt->event_id)
+    {
+    case HTTP_EVENT_ON_DATA:
+
+        if (!response->data)
+        {
+            response->capacity = evt->data_len + 1;
+            response->data = malloc(response->capacity);
+            if (!response->data)
+                return ESP_FAIL;
+            response->len = 0;
+        }
+        else if (response->len + evt->data_len >= response->capacity)
+        {
+            response->capacity = response->len + evt->data_len + 1;
+            char *new_data = realloc(response->data, response->capacity);
+            if (!new_data)
+            {
+                free(response->data);
+                return ESP_FAIL;
             }
-            
-            // Append new data
-            memcpy(response->data + response->len, evt->data, evt->data_len);
-            response->len += evt->data_len;
-            response->data[response->len] = '\0';
-            break;
-            
-        default:
-            break;
+            response->data = new_data;
+        }
+
+        memcpy(response->data + response->len, evt->data, evt->data_len);
+        response->len += evt->data_len;
+        response->data[response->len] = '\0';
+        break;
+
+    default:
+        break;
     }
     return ESP_OK;
 }
 
-/* =================================================================== */
-/*  Wi-Fi STA                                                          */
-/* =================================================================== */
 static void wifi_init_sta(void)
 {
     esp_netif_init();
@@ -80,7 +79,7 @@ static void wifi_init_sta(void)
 
     wifi_config_t wcfg = {
         .sta = {
-            .ssid     = WIFI_SSID,
+            .ssid = WIFI_SSID,
             .password = WIFI_PASS,
         },
     };
@@ -91,13 +90,10 @@ static void wifi_init_sta(void)
     esp_wifi_connect();
 }
 
-/* =================================================================== */
-/*  Fetch version.txt (uses event handler)                             */
-/* =================================================================== */
 static esp_err_t fetch_latest_version(char *ver_buf, size_t buf_sz)
 {
     http_response_t response = {0};
-    
+
     esp_http_client_config_t cfg = {
         .url = VERSION_URL,
         .crt_bundle_attach = esp_crt_bundle_attach,
@@ -106,61 +102,69 @@ static esp_err_t fetch_latest_version(char *ver_buf, size_t buf_sz)
         .buffer_size = 8192,
         .buffer_size_tx = 8192,
         .timeout_ms = 20000,
-        .disable_auto_redirect = false
-    };
-    
+        .disable_auto_redirect = false};
+
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) return ESP_FAIL;
-    
+    if (!client)
+        return ESP_FAIL;
+
     esp_err_t err = esp_http_client_perform(client);
-    if (err == ESP_OK) {
+    if (err == ESP_OK)
+    {
         int status = esp_http_client_get_status_code(client);
-        if (status == 200) {
-            if (response.data && response.len > 0) {
-                // Copy and clean version string
+        if (status == 200)
+        {
+            if (response.data && response.len > 0)
+            {
+
                 size_t copy_len = (response.len < buf_sz) ? response.len : buf_sz - 1;
                 strncpy(ver_buf, response.data, copy_len);
                 ver_buf[copy_len] = '\0';
-                
-                // Remove trailing newline if exists
+
                 char *newline = strchr(ver_buf, '\n');
-                if (newline) *newline = '\0';
-                
+                if (newline)
+                    *newline = '\0';
+
                 ESP_LOGI(TAG, "Fetched version: \"%s\"", ver_buf);
-            } else {
+            }
+            else
+            {
                 ESP_LOGE(TAG, "Empty response body");
                 err = ESP_FAIL;
             }
-        } else {
+        }
+        else
+        {
             ESP_LOGE(TAG, "HTTP status: %d", status);
             err = ESP_FAIL;
         }
-    } else {
+    }
+    else
+    {
         ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
     }
-    
-    if (response.data) free(response.data);
+
+    if (response.data)
+        free(response.data);
     esp_http_client_cleanup(client);
     return err;
 }
 
-/* =================================================================== */
-/*  Semantic Version Comparison                                        */
-/* =================================================================== */
 static bool version_is_newer(const char *remote, const char *local)
 {
     int rM, rm, rP, lM, lm, lP;
-    if (sscanf(remote, "v%d.%d.%d", &rM, &rm, &rP) != 3) return false;
-    if (sscanf(local, "v%d.%d.%d", &lM, &lm, &lP) != 3) return false;
+    if (sscanf(remote, "v%d.%d.%d", &rM, &rm, &rP) != 3)
+        return false;
+    if (sscanf(local, "v%d.%d.%d", &lM, &lm, &lP) != 3)
+        return false;
 
-    if (rM != lM) return rM > lM;
-    if (rm != lm) return rm > lm;
+    if (rM != lM)
+        return rM > lM;
+    if (rm != lm)
+        return rm > lm;
     return rP > lP;
 }
 
-/* =================================================================== */
-/*  OTA Polling Task                                                   */
-/* =================================================================== */
 static void ota_poll_task(void *arg)
 {
     while (1) {
@@ -216,17 +220,17 @@ static void ota_poll_task(void *arg)
     }
 }
 
-/* =================================================================== */
 void app_main(void)
 {
     esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
-    
+
     wifi_init_sta();
     vTaskDelay(pdMS_TO_TICKS(5000));
-    
+
     xTaskCreate(ota_poll_task, "ota_poll_task", 8192, NULL, 5, NULL);
 }
