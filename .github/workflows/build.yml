@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,32 +19,21 @@ jobs:
         with:
           submodules: recursive
 
-      # 2. Cache ESP-IDF
-      - name: Cache ESP-IDF
-        uses: actions/cache@v4
+      # 2. Install ESP-IDF with caching
+      - name: Setup ESP-IDF and Build
+        uses: rmshub/esp-idf-action@v6
         with:
-          path: ~/.espressif
-          key: espidf-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('**/sdkconfig') }}
+          esp_idf_version: v5.4.1
+          esp_idf_target: esp32
+          build_command: idf.py build
 
-      # 3. Setup ESP-IDF
-      - name: Setup ESP-IDF
-        uses: espressif/install-esp-idf-action@v1
-        with:
-          version: 'v5.4.1'
-
-      # 4. Build firmware
-      - name: Build project
-        run: |
-          source $IDF_PATH/export.sh
-          idf.py build
-
-      # 5. Extract firmware version and create version.txt
+      # 3. Extract firmware version and create version.txt
       - name: Create version.txt
         run: |
           VERSION=$(grep -Po '(?<=#define FIRMWARE_VERSION ")[^"]*' main/*.c | head -n1)
           echo $VERSION > version.txt
 
-      # 6. Upload firmware artifact (for debugging/download)
+      # 4. Upload firmware artifact (for debugging/download)
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
@@ -50,7 +42,7 @@ jobs:
             build/*.bin
             version.txt
 
-      # 7. Create GitHub Release and upload firmware.bin and version.txt
+      # 5. Create GitHub Release and upload firmware.bin and version.txt
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
