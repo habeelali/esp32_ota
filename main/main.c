@@ -4,6 +4,7 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"
+#include "esp_crt_bundle.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_http_client.h"
@@ -11,17 +12,18 @@
 #include "esp_ota_ops.h"
 #include <string.h>
 
-#define WIFI_SSID      "phone"
-#define WIFI_PASS      "pakistan1337"
+#define WIFI_SSID      "155"
+#define WIFI_PASS      "359F0E78"
 
-// URL to your version file (raw file in your repo)
-#define VERSION_URL " https://github.com/habeelali/esp32_ota/releases/latest/download/version.txt"
-// URL to your latest firmware release binary
-#define OTA_URL        "https://github.com/habeelali/esp32_ota/releases/latest/download/firmware.bin"
-// The version string for this build (update for each release)
+// URLs to your GitHub release assets
+#define VERSION_URL "https://github.com/habeelali/esp32_ota/releases/latest/download/version.txt"
+#define OTA_URL     "https://github.com/habeelali/esp32_ota/releases/latest/download/firmware.bin"
 #define CURRENT_VERSION "v1.0.0"
 
-static const char *TAG = "OTA_VERSION_EXAMPLE";
+// 24 hours in milliseconds (24*60*60*1000)
+#define POLL_INTERVAL_MS (24 * 60 * 60 * 1000)
+
+static const char *TAG = "ESP32_OTA";
 
 void wifi_init_sta(void)
 {
@@ -46,19 +48,19 @@ void wifi_init_sta(void)
     esp_wifi_connect();
 }
 
-// Print the running firmware version
 void print_running_version(void) {
     const esp_app_desc_t *app_desc = esp_ota_get_app_description();
     ESP_LOGI(TAG, "Running firmware version: %s", app_desc->version);
 }
 
-// Fetch latest version string from GitHub
 esp_err_t fetch_latest_version(char *version_buf, size_t buf_len) {
-    esp_http_client_config_t config = {
-        .url = VERSION_URL,
-        .method = HTTP_METHOD_GET,
-        .timeout_ms = 5000,
-    };
+    
+esp_http_client_config_t config = {
+    .url = VERSION_URL,
+    .cert_pem = NULL, // or remove this line
+    .crt_bundle_attach = esp_crt_bundle_attach, // <-- Add this line
+    .timeout_ms = 5000,
+};
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "Failed to initialise HTTP connection");
@@ -73,7 +75,7 @@ esp_err_t fetch_latest_version(char *version_buf, size_t buf_len) {
             if (content_length > 0 && content_length < buf_len) {
                 int read_len = esp_http_client_read(client, version_buf, content_length);
                 if (read_len > 0) {
-                    version_buf[read_len] = '\0'; // Null terminate
+                    version_buf[read_len] = '\0';
                     ESP_LOGI(TAG, "Fetched latest version: %s", version_buf);
                     esp_http_client_cleanup(client);
                     return ESP_OK;
@@ -89,53 +91,51 @@ esp_err_t fetch_latest_version(char *version_buf, size_t buf_len) {
     return ESP_FAIL;
 }
 
-void ota_task(void *pvParameter)
+void ota_polling_task(void *pvParameter)
 {
-    ESP_LOGI(TAG, "Starting OTA task...");
-    print_running_version();
+    while (1) {
+        ESP_LOGI(TAG, "Checking for OTA update...");
+        print_running_version();
 
-    char latest_version[32] = {0};
-    if (fetch_latest_version(latest_version, sizeof(latest_version)) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to fetch latest version");
-        vTaskDelete(NULL);
-        return;
+        char latest_version[32] = {0};
+        if (fetch_latest_version(latest_version, sizeof(latest_version)) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to fetch latest version. Will retry in 24 hours.");
+        } else if (strcmp(latest_version, CURRENT_VERSION) == 0) {
+            ESP_LOGI(TAG, "Firmware is already up to date. No update needed.");
+        } else {
+            ESP_LOGI(TAG, "New firmware version available: %s. Starting OTA...", latest_version);
+
+            esp_http_client_config_t config = {
+                .url = OTA_URL,
+                    .crt_bundle_attach = esp_crt_bundle_attach, // <-- Add this line
+                .timeout_ms = 10000,
+            };
+
+            esp_https_ota_config_t ota_config = {
+                .http_config = &config,
+            };
+
+            esp_https_ota_handle_t https_ota_handle = NULL;
+            esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "ESP HTTPS OTA Begin failed");
+            } else {
+                err = esp_https_ota_perform(https_ota_handle);
+                if (err == ESP_OK) {
+                    ESP_LOGI(TAG, "OTA update successful, restarting...");
+                    esp_https_ota_finish(https_ota_handle);
+                    esp_restart();
+                } else {
+                    ESP_LOGE(TAG, "OTA update failed");
+                    esp_https_ota_abort(https_ota_handle);
+                }
+            }
+        }
+
+        // Wait 24 hours before next check
+        ESP_LOGI(TAG, "Next OTA check in 24 hours.");
+        vTaskDelay(POLL_INTERVAL_MS / portTICK_PERIOD_MS);
     }
-
-    if (strcmp(latest_version, CURRENT_VERSION) == 0) {
-        ESP_LOGI(TAG, "Firmware is already up to date. No update needed.");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "New firmware version available: %s. Starting OTA...", latest_version);
-
-    esp_http_client_config_t config = {
-        .url = OTA_URL,
-        .timeout_ms = 10000,
-    };
-
-    esp_https_ota_config_t ota_config = {
-        .http_config = &config,
-    };
-
-    esp_https_ota_handle_t https_ota_handle = NULL;
-    esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "ESP HTTPS OTA Begin failed");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    err = esp_https_ota_perform(https_ota_handle);
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "OTA update successful, restarting...");
-        esp_https_ota_finish(https_ota_handle);
-        esp_restart();
-    } else {
-        ESP_LOGE(TAG, "OTA update failed");
-        esp_https_ota_abort(https_ota_handle);
-    }
-    vTaskDelete(NULL);
 }
 
 void app_main(void)
@@ -148,7 +148,9 @@ void app_main(void)
     }
 
     wifi_init_sta();
+    
     vTaskDelay(5000 / portTICK_PERIOD_MS); // Wait for WiFi
 
-    xTaskCreate(&ota_task, "ota_task", 8192, NULL, 5, NULL);
+    // Start polling task (checks immediately, then every 24 hours)
+    xTaskCreate(&ota_polling_task, "ota_polling_task", 8192, NULL, 5, NULL);
 }

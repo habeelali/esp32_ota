@@ -6,9 +6,10 @@
     "interface/ftdi/esp32_devkitj_v1.cfg",
     "target/esp32.cfg"
   ],
-  "idf.port": "/dev/ttyS0",
+  "idf.port": "/dev/ttyUSB0",
   "idf.toolsPath": "/home/x/.espressif",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32"
-  }
+  },
+  "idf.flashType": "UART"
 }
