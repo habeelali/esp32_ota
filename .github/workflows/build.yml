@@ -30,7 +30,7 @@ jobs:
       # 3. Extract firmware version and create version.txt
       - name: Create version.txt
         run: |
-          VERSION=$(grep -Po '(?<=#define FIRMWARE_VERSION ")[^"]*' main/*.c | head -n1)
+          VERSION=$(grep -Po '(?<=#define CURRENT_VERSION ")[^"]*' main/*.c | head -n1)
           echo $VERSION > version.txt
 
       # 4. Upload firmware artifact (for debugging/download)

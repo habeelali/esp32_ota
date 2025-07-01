@@ -17,7 +17,7 @@
 
 // URLs to your GitHub release assets
 #define VERSION_URL "https://github.com/habeelali/esp32_ota/releases/latest/download/version.txt"
-#define OTA_URL     "https://github.com/habeelali/esp32_ota/releases/latest/download/firmware.bin"
+#define OTA_URL     "https://github.com/habeelali/esp32_ota/releases/latest/download/project-name.bin"
 #define CURRENT_VERSION "v1.0.2"
 
 // 24 hours in milliseconds (24*60*60*1000)
