@@ -18,7 +18,7 @@
 // URLs to your GitHub release assets
 #define VERSION_URL "https://github.com/habeelali/esp32_ota/releases/latest/download/version.txt"
 #define OTA_URL     "https://github.com/habeelali/esp32_ota/releases/latest/download/project-name.bin"
-#define CURRENT_VERSION "v1.0.2"
+#define CURRENT_VERSION "v2.0.0"
 
 // 24 hours in milliseconds (24*60*60*1000)
 #define POLL_INTERVAL_MS (24 * 60 * 60 * 1000)
@@ -59,7 +59,9 @@ esp_http_client_config_t config = {
     .url = VERSION_URL,
     .cert_pem = NULL, // or remove this line
     .crt_bundle_attach = esp_crt_bundle_attach, // <-- Add this line
-    .timeout_ms = 5000,
+    .buffer_size = 4096,
+    .buffer_size_tx = 4096,
+    .timeout_ms = 20000,
 };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
@@ -108,7 +110,9 @@ void ota_polling_task(void *pvParameter)
             esp_http_client_config_t config = {
                 .url = OTA_URL,
                     .crt_bundle_attach = esp_crt_bundle_attach, // <-- Add this line
-                .timeout_ms = 10000,
+                .buffer_size = 4096,
+    .buffer_size_tx = 4096,
+    .timeout_ms = 20000,
             };
 
             esp_https_ota_config_t ota_config = {
