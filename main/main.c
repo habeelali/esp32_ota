@@ -17,7 +17,7 @@
 
 #define VERSION_URL "https://github.com/habeelali/esp32_ota/releases/latest/download/version.txt"
 #define OTA_URL     "https://github.com/habeelali/esp32_ota/releases/latest/download/project-name.bin"
-#define CURRENT_VERSION "v2.2.1"
+#define CURRENT_VERSION "v2.2.2"
 #define POLL_INTERVAL_MS (24 * 60 * 60 * 1000)   /* 24 h */
 
 static const char *TAG = "ESP32_OTA";
@@ -188,7 +188,16 @@ static void ota_poll_task(void *arg)
             
             esp_https_ota_handle_t h;
             if (esp_https_ota_begin(&ocfg, &h) == ESP_OK) {
-                esp_err_t err = esp_https_ota_perform(h);
+                esp_err_t err;
+                while (1) {
+                    err = esp_https_ota_perform(h);
+                    if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+                        break;
+                    }
+                    // Allow other tasks to run during download
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+                
                 if (err == ESP_OK) {
                     ESP_LOGI(TAG, "OTA succeeded – rebooting");
                     esp_https_ota_finish(h);
